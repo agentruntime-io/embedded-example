@@ -35,6 +35,13 @@ This demo implements the **partner side** of [Embedded Connect](https://github.c
 
 ## Quick start
 
+Clone this repo, then run backend and frontend in separate terminals:
+
+```powershell
+git clone https://github.com/agentruntime-io/embedded-example.git
+cd embedded-example
+```
+
 ### 1. Backend
 
 ```powershell
@@ -100,10 +107,10 @@ flowchart LR
 
 ## Sharing with customers
 
-1. Zip or link this folder with README.
-2. They copy `.env.example` → `.env` and add their PAT + Google redirect URI.
+1. Share the repo: **[github.com/agentruntime-io/embedded-example](https://github.com/agentruntime-io/embedded-example)** (or fork it for their org).
+2. They clone, copy `backend/.env.example` → `backend/.env`, and add their PAT + Google redirect URI (see [Quick start](#quick-start)).
 3. Walk through popup + webhook — mirrors production Tier A integration.
-4. Point them to [embedded-connect.md](../../agentruntime-docs/integrations/embedded-connect.md) for product docs.
+4. Point them to [Embedded Connect product docs](https://github.com/agentruntime-io/agentruntime-docs/blob/main/integrations/embedded-connect.md).
 
 ## Troubleshooting
 
@@ -117,4 +124,4 @@ flowchart LR
 
 ## License
 
-Internal reference demo — same license as AgentRuntime monorepo.
+Reference demo for AgentRuntime Embedded Connect — published at [embedded-example](https://github.com/agentruntime-io/embedded-example).
