@@ -1,0 +1,75 @@
+{
+  "tables": [
+    {
+      "name": "emails",
+      "columns": [
+        {
+          "name": "gmail_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "thread_id",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string"
+        },
+        {
+          "name": "from_email",
+          "type": "email"
+        },
+        {
+          "name": "to_email",
+          "type": "string"
+        },
+        {
+          "name": "snippet",
+          "type": "string"
+        },
+        {
+          "name": "received_at",
+          "type": "datetime"
+        },
+        {
+          "name": "source",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "synced_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "display_name": "Emails",
+      "on_duplicate": "ignore"
+    },
+    {
+      "name": "sync_state",
+      "columns": [
+        {
+          "name": "key",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "activated_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "last_sync_at",
+          "type": "datetime",
+          "required": true
+        }
+      ],
+      "display_name": "Sync State",
+      "on_duplicate": "fail"
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "workflow_id": "40ae42d4-b475-423a-9cf4-eb697578c428",
+  "nodes": [
+    {
+      "data": {
+        "label": "MCP: gmail_search_emails",
+        "mcpStepPayload": {
+          "connection_resolution": "principal",
+          "description": "Invoke gmail_search_emails on Gmail",
+          "instance_id": "d4eeceac-0e71-4539-9416-5d18c4cfcd8e",
+          "name": "MCP: gmail_search_emails",
+          "server_url": "https://router.agentruntime.io/gmail/mcp",
+          "timeout_s": 60,
+          "tool_args": {
+            "max_results": 100,
+            "query": "in:all after:{{input.backfill_after}} before:{{input.backfill_before}}"
+          },
+          "tool_name": "gmail_search_emails",
+          "type": "mcp_call"
+        },
+        "mcpToolSchema": {
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "max_results": {
+                "description": "Maximum messages to return (default 10, max 100)",
+                "type": "integer"
+              },
+              "query": {
+                "description": "Gmail search query (e.g. from:user@example.com is:unread subject:hello)",
+                "type": "string"
+              }
+            },
+            "required": ["query"],
+            "type": "object"
+          },
+          "outputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "description": "Number of messages returned",
+                "type": "integer"
+              },
+              "messages": {
+                "description": "Matching message summaries",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "date": { "description": "Date header value", "type": "string" },
+                    "from": { "description": "From header value", "type": "string" },
+                    "id": { "description": "Gmail message ID", "type": "string" },
+                    "snippet": { "description": "Short message preview text", "type": "string" },
+                    "subject": { "description": "Subject header value", "type": "string" },
+                    "thread_id": { "description": "Gmail thread ID", "type": "string" }
+                  },
+                  "required": ["id", "thread_id", "snippet", "from", "subject", "date"],
+                  "type": "object"
+                },
+                "type": ["null", "array"]
+              }
+            },
+            "required": ["count", "messages"],
+            "type": "object"
+          }
+        },
+        "node_uuid": "af2ccc51-8117-4f62-885b-57bcb27cc710",
+        "status": "success",
+        "type": "mcp_call"
+      },
+      "id": "af2ccc51-8117-4f62-885b-57bcb27cc710",
+      "type": "mcp_call"
+    },
+    {
+      "data": {
+        "baseAgent": {
+          "agent_id": "foreach_parallel",
+          "description": "Run a nested step for each element in a list, with bounded parallelism (max_parallel). Use {{foreach.item}} and {{foreach.index}} in the body step templates, or item/index in Lua.",
+          "id": "foreach_parallel",
+          "name": "For each (parallel)",
+          "node_type": "logic",
+          "provider": "builtin"
+        },
+        "builtinStepPayload": {
+          "for_each_body_steps": [
+            {
+              "id": "lua_transform",
+              "name": "Lua transform",
+              "script": "local months = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}\n\nlocal function iso_from_gmail_date(s)\n  if type(s) ~= \"string\" or s == \"\" then return nil end\n  local cleaned = s:gsub(\"%s*%([^)]+%)%s*$\", \"\")\n  cleaned = cleaned:gsub(\"^[%a]+, \", \"\")\n  local day, mon, year, hh, mm, ss, tzsign, tzh, tzm =\n    cleaned:match(\"(%d%d?) (%a%a%a) (%d%d%d%d) (%d%d):(%d%d):(%d%d) ([+-])(%d%d)(%d%d)\")\n  if not day then return nil end\n  local m = months[mon]\n  if not m then return nil end\n  return string.format(\n    \"%04d-%02d-%02dT%s:%s:%s%s%s:%s\",\n    tonumber(year), m, tonumber(day), hh, mm, ss, tzsign, tzh, tzm\n  )\nend\n\nreturn {\n  from_email = item.from,\n  gmail_id = item.id,\n  received_at = iso_from_gmail_date(item.date),\n  snippet = item.snippet,\n  source = \"backfill\",\n  subject = item.subject,\n  synced_at = input.synced_at,\n  thread_id = item.thread_id,\n}",
+              "type": "lua_script"
+            },
+            {
+              "id": "tenantdata_insert",
+              "instance_id": "ae4eafa7-4c9e-4478-b1fd-3d10073571b4",
+              "name": "MCP: tenantdata_insert",
+              "server_url": "https://db.agentruntime.io/mcp",
+              "timeout_s": 60,
+              "tool_args": {
+                "rows": ["{{body.lua_transform.result}}"],
+                "table": "emails"
+              },
+              "tool_name": "tenantdata_insert",
+              "type": "mcp_call",
+              "depends_on": ["lua_transform"]
+            }
+          ],
+          "for_each_items": "{{steps.af2ccc51-8117-4f62-885b-57bcb27cc710.result.messages}}",
+          "for_each_max_parallel": 5,
+          "id": "foreach_parallel",
+          "name": "For each (parallel)",
+          "type": "for_each"
+        },
+        "label": "For each (parallel)",
+        "node_uuid": "4cc4c985-7523-4717-ba4b-e7766994bc83",
+        "type": "logic"
+      },
+      "id": "4cc4c985-7523-4717-ba4b-e7766994bc83",
+      "type": "logic"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-af2ccc51-8117-4f62-885b-57bcb27cc710-4cc4c985-7523-4717-ba4b-e7766994bc83",
+      "source": "af2ccc51-8117-4f62-885b-57bcb27cc710",
+      "target": "4cc4c985-7523-4717-ba4b-e7766994bc83"
+    }
+  ],
+  "steps": [
+    {
+      "id": "af2ccc51-8117-4f62-885b-57bcb27cc710",
+      "type": "mcp_call",
+      "name": "MCP: gmail_search_emails",
+      "description": "Invoke gmail_search_emails on Gmail",
+      "tool_name": "gmail_search_emails",
+      "tool_args": {
+        "max_results": 100,
+        "query": "in:all after:{{input.backfill_after}} before:{{input.backfill_before}}"
+      },
+      "server_url": "https://router.agentruntime.io/gmail/mcp",
+      "timeout_s": 60,
+      "instance_id": "d4eeceac-0e71-4539-9416-5d18c4cfcd8e",
+      "connection_resolution": "principal",
+      "depends_on": []
+    },
+    {
+      "id": "4cc4c985-7523-4717-ba4b-e7766994bc83",
+      "type": "for_each",
+      "name": "For each (parallel)",
+      "description": "Run a nested step for each element in a list, with bounded parallelism (max_parallel). Use {{foreach.item}} and {{foreach.index}} in the body step templates, or item/index in Lua.",
+      "for_each_items": "{{steps.af2ccc51-8117-4f62-885b-57bcb27cc710.result.messages}}",
+      "for_each_max_parallel": 5,
+      "for_each_body_steps": [
+        {
+          "id": "lua_transform",
+          "type": "lua_script",
+          "name": "Lua transform",
+          "script": "local months = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}\n\nlocal function iso_from_gmail_date(s)\n  if type(s) ~= \"string\" or s == \"\" then return nil end\n  local cleaned = s:gsub(\"%s*%([^)]+%)%s*$\", \"\")\n  cleaned = cleaned:gsub(\"^[%a]+, \", \"\")\n  local day, mon, year, hh, mm, ss, tzsign, tzh, tzm =\n    cleaned:match(\"(%d%d?) (%a%a%a) (%d%d%d%d) (%d%d):(%d%d):(%d%d) ([+-])(%d%d)(%d%d)\")\n  if not day then return nil end\n  local m = months[mon]\n  if not m then return nil end\n  return string.format(\n    \"%04d-%02d-%02dT%s:%s:%s%s%s:%s\",\n    tonumber(year), m, tonumber(day), hh, mm, ss, tzsign, tzh, tzm\n  )\nend\n\nreturn {\n  from_email = item.from,\n  gmail_id = item.id,\n  received_at = iso_from_gmail_date(item.date),\n  snippet = item.snippet,\n  source = \"backfill\",\n  subject = item.subject,\n  synced_at = input.synced_at,\n  thread_id = item.thread_id,\n}"
+        },
+        {
+          "id": "tenantdata_insert",
+          "type": "mcp_call",
+          "name": "MCP: tenantdata_insert",
+          "depends_on": ["lua_transform"],
+          "tool_name": "tenantdata_insert",
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "ae4eafa7-4c9e-4478-b1fd-3d10073571b4",
+          "tool_args": {
+            "rows": ["{{body.lua_transform.result}}"],
+            "table": "emails"
+          },
+          "timeout_s": 60
+        }
+      ],
+      "depends_on": ["af2ccc51-8117-4f62-885b-57bcb27cc710"]
+    }
+  ]
+}

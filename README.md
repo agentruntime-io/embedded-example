@@ -88,6 +88,7 @@ Open **http://localhost:5175** — fake partner app **Acme SaaS**.
 embedded-example/
   backend/          FastAPI — partner API (PAT calls + webhook receiver; no OAuth UI)
   frontend/         Vite React — partner UI (opens BFF popup; no PAT)
+  examples/         Tenant Data schema + Gmail backfill workflow JSON
   README.md
 ```
 
@@ -105,12 +106,90 @@ flowchart LR
   UI -->|GET /api/customers| API
 ```
 
+## Gmail backfill (Tenant Data + workflow)
+
+After users connect Gmail via Embedded Connect, run a **principal-scoped** workflow to search Gmail and insert rows into Tenant Data. Example artifacts live in [`examples/`](examples/).
+
+| File | Purpose |
+|------|---------|
+| [`examples/tenant-data-schema.json`](examples/tenant-data-schema.json) | Tenant Data tables (`emails`, `sync_state`) |
+| [`examples/gmail-backfill-workflow.json`](examples/gmail-backfill-workflow.json) | Console workflow export — Gmail search → Lua map → `tenantdata_insert` |
+
+### Setup
+
+1. **Tenant Data** — Console → Data → create schema from JSON below (or import [`tenant-data-schema.json`](examples/tenant-data-schema.json)).
+2. **Workflow** — Console → Workflows → import or recreate from [`gmail-backfill-workflow.json`](examples/gmail-backfill-workflow.json).
+3. **Replace tenant-specific IDs** in the workflow before running in your workspace:
+   - Gmail MCP `instance_id` on the search step
+   - Tenant Data MCP `instance_id` on `tenantdata_insert`
+4. **Run** per connected principal (manual, segment, or cron) with starting input, for example:
+
+   ```json
+   {
+     "backfill_after": "2026/01/01",
+     "backfill_before": "2026/02/01",
+     "synced_at": "2026-02-01T12:00:00Z"
+   }
+   ```
+
+   Gmail step uses `connection_resolution: principal` and query `in:all after:{{input.backfill_after}} before:{{input.backfill_before}}`. The foreach body maps each message to an `emails` row (`on_duplicate: ignore` on `gmail_id`). Set `for_each_max_parallel` lower (e.g. `5`) if you hit DB connection limits under segment fan-out.
+
+### Tenant Data schema
+
+```json
+{
+  "tables": [
+    {
+      "name": "emails",
+      "columns": [
+        { "name": "gmail_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "thread_id", "type": "short_text", "required": true },
+        { "name": "subject", "type": "string" },
+        { "name": "from_email", "type": "email" },
+        { "name": "to_email", "type": "string" },
+        { "name": "snippet", "type": "string" },
+        { "name": "received_at", "type": "datetime" },
+        { "name": "source", "type": "short_text", "required": true },
+        { "name": "synced_at", "type": "datetime", "required": true }
+      ],
+      "display_name": "Emails",
+      "on_duplicate": "ignore"
+    },
+    {
+      "name": "sync_state",
+      "columns": [
+        { "name": "key", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "activated_at", "type": "datetime", "required": true },
+        { "name": "last_sync_at", "type": "datetime", "required": true }
+      ],
+      "display_name": "Sync State",
+      "on_duplicate": "fail"
+    }
+  ]
+}
+```
+
+### Reference workflow
+
+<details>
+<summary>Full workflow JSON (click to expand)</summary>
+
+See [`examples/gmail-backfill-workflow.json`](examples/gmail-backfill-workflow.json) in this repo for the canonical copy. Summary of steps:
+
+1. **MCP: gmail_search_emails** — `max_results: 100`, principal connection, date range from workflow input.
+2. **For each (parallel)** — over `result.messages`, `for_each_max_parallel: 5`.
+3. **Lua transform** — map Gmail headers to `emails` row (`source: backfill`, ISO `received_at` from RFC2822 date).
+4. **MCP: tenantdata_insert** — insert into table `emails`.
+
+</details>
+
 ## Sharing with customers
 
 1. Share the repo: **[github.com/agentruntime-io/embedded-example](https://github.com/agentruntime-io/embedded-example)** (or fork it for their org).
 2. They clone, copy `backend/.env.example` → `backend/.env`, and add their PAT + Google redirect URI (see [Quick start](#quick-start)).
 3. Walk through popup + webhook — mirrors production Tier A integration.
-4. Point them to [Embedded Connect product docs](https://github.com/agentruntime-io/agentruntime-docs/blob/main/integrations/embedded-connect.md).
+4. Optionally set up [Gmail backfill](#gmail-backfill-tenant-data--workflow) (Tenant Data schema + workflow).
+5. Point them to [Embedded Connect product docs](https://github.com/agentruntime-io/agentruntime-docs/blob/main/integrations/embedded-connect.md).
 
 ## Troubleshooting
 
