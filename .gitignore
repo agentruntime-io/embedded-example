@@ -1,0 +1,33 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets — never commit (use .env.example)
+.env
+.env.*
+!.env.example
+
+# Local demo data (SQLite customers, webhook inbox state)
+*.db
+*.sqlite
+*.sqlite3
+demo_partner.db
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
