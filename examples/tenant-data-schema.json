@@ -4,6 +4,12 @@
       "name": "emails",
       "columns": [
         {
+          "name": "external_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
           "name": "gmail_id",
           "type": "short_text",
           "required": true,
@@ -47,29 +53,6 @@
       ],
       "display_name": "Emails",
       "on_duplicate": "ignore"
-    },
-    {
-      "name": "sync_state",
-      "columns": [
-        {
-          "name": "key",
-          "type": "short_text",
-          "required": true,
-          "primary_key": true
-        },
-        {
-          "name": "activated_at",
-          "type": "datetime",
-          "required": true
-        },
-        {
-          "name": "last_sync_at",
-          "type": "datetime",
-          "required": true
-        }
-      ],
-      "display_name": "Sync State",
-      "on_duplicate": "fail"
     }
   ]
 }

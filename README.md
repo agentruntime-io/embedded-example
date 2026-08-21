@@ -112,7 +112,7 @@ After users connect Gmail via Embedded Connect, run a **principal-scoped** workf
 
 | File | Purpose |
 |------|---------|
-| [`examples/tenant-data-schema.json`](examples/tenant-data-schema.json) | Tenant Data tables (`emails`, `sync_state`) |
+| [`examples/tenant-data-schema.json`](examples/tenant-data-schema.json) | Tenant Data `emails` table (scoped by `external_id` + `gmail_id`) |
 | [`examples/gmail-backfill-workflow.json`](examples/gmail-backfill-workflow.json) | Console workflow export — Gmail search → Lua map → `tenantdata_insert` |
 
 ### Setup
@@ -126,13 +126,16 @@ After users connect Gmail via Embedded Connect, run a **principal-scoped** workf
 
    ```json
    {
+     "external_user_id": "cust_alice",
      "backfill_after": "2026/01/01",
      "backfill_before": "2026/02/01",
      "synced_at": "2026-02-01T12:00:00Z"
    }
    ```
 
-   Gmail step uses `connection_resolution: principal` and query `in:all after:{{input.backfill_after}} before:{{input.backfill_before}}`. The foreach body maps each message to an `emails` row (`on_duplicate: ignore` on `gmail_id`). Set `for_each_max_parallel` lower (e.g. `5`) if you hit DB connection limits under segment fan-out.
+   Include **`external_user_id`** in starting input so each inserted row is tagged with your partner customer key (`external_id` column). When running as **Principal** or **Segment**, pass the same value in starting input as the principal being executed (Console → Workflow setup → starting input).
+
+   Gmail step uses `connection_resolution: principal` and query `in:all after:{{input.backfill_after}} before:{{input.backfill_before}}`. The foreach body maps each message to an `emails` row (`on_duplicate: ignore` on composite key `external_id` + `gmail_id`). Set `for_each_max_parallel` lower (e.g. `5`) if you hit DB connection limits under segment fan-out.
 
 ### Tenant Data schema
 
@@ -142,6 +145,7 @@ After users connect Gmail via Embedded Connect, run a **principal-scoped** workf
     {
       "name": "emails",
       "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
         { "name": "gmail_id", "type": "short_text", "required": true, "primary_key": true },
         { "name": "thread_id", "type": "short_text", "required": true },
         { "name": "subject", "type": "string" },
@@ -154,16 +158,6 @@ After users connect Gmail via Embedded Connect, run a **principal-scoped** workf
       ],
       "display_name": "Emails",
       "on_duplicate": "ignore"
-    },
-    {
-      "name": "sync_state",
-      "columns": [
-        { "name": "key", "type": "short_text", "required": true, "primary_key": true },
-        { "name": "activated_at", "type": "datetime", "required": true },
-        { "name": "last_sync_at", "type": "datetime", "required": true }
-      ],
-      "display_name": "Sync State",
-      "on_duplicate": "fail"
     }
   ]
 }
@@ -178,7 +172,7 @@ See [`examples/gmail-backfill-workflow.json`](examples/gmail-backfill-workflow.j
 
 1. **MCP: gmail_search_emails** — `max_results: 100`, principal connection, date range from workflow input.
 2. **For each (parallel)** — over `result.messages`, `for_each_max_parallel: 5`.
-3. **Lua transform** — map Gmail headers to `emails` row (`source: backfill`, ISO `received_at` from RFC2822 date).
+3. **Lua transform** — map Gmail headers to an `emails` row (`external_id` from `input.external_user_id`, `source: backfill`, ISO `received_at`).
 4. **MCP: tenantdata_insert** — insert into table `emails`.
 
 </details>
