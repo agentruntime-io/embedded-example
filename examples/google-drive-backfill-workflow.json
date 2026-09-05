@@ -1,0 +1,138 @@
+{
+  "workflow_id": "google-drive-backfill-sync",
+  "name": "Google Drive backfill sync",
+  "description": "List files under root folder (depth 1 per run), upsert drive_files and drive_folders. Re-run while backfill_status=running.",
+  "steps": [
+    {
+      "id": "read_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_select_one drive_sync_state",
+      "depends_on": [],
+      "tool_name": "tenantdata_select_one",
+      "tool_args": {
+        "table": "drive_sync_state",
+        "by_primary_key": { "external_id": "{{run.external_id}}" }
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    },
+    {
+      "id": "list_files",
+      "type": "mcp_call",
+      "name": "google_drive_list_files",
+      "depends_on": ["read_sync_state"],
+      "tool_name": "google_drive_list_files",
+      "tool_args": {
+        "folder_id": "{{steps.read_sync_state.result.row.root_folder_id}}",
+        "depth_level": 1,
+        "include_team_drives": true
+      },
+      "server_url": "https://router.agentruntime.io/google-drive/mcp",
+      "instance_id": "REPLACE_GOOGLE_DRIVE_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 120
+    },
+    {
+      "id": "split_rows",
+      "type": "lua_script",
+      "name": "Split files and folders",
+      "depends_on": ["list_files"],
+      "script": "local folder_mime = \"application/vnd.google-apps.folder\"\nlocal files = {}\nlocal folders = {}\nfor _, f in ipairs(steps.list_files.result.files or {}) do\n  local row_base = {\n    external_id = run.external_id,\n    name = f.name,\n    parent_ids = f.parents,\n    trashed = f.trashed,\n    synced_at = input.synced_at,\n    source = \"backfill\",\n  }\n  if f.mime_type == folder_mime then\n    table.insert(folders, {\n      folder_id = f.id,\n      name = f.name,\n      parent_ids = f.parents,\n      trashed = f.trashed,\n      synced_at = input.synced_at,\n      source = \"backfill\",\n      external_id = run.external_id,\n    })\n  else\n    table.insert(files, {\n      file_id = f.id,\n      name = f.name,\n      mime_type = f.mime_type,\n      parent_ids = f.parents,\n      trashed = f.trashed,\n      synced_at = input.synced_at,\n      source = \"backfill\",\n      external_id = run.external_id,\n    })\n  end\nend\nreturn { files = files, folders = folders }"
+    },
+    {
+      "id": "insert_folders",
+      "type": "mcp_call",
+      "name": "tenantdata_insert drive_folders batch",
+      "depends_on": ["split_rows"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "drive_folders",
+        "rows": "{{steps.split_rows.result.folders}}",
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    },
+    {
+      "id": "foreach_files",
+      "type": "for_each",
+      "name": "Enrich file metadata",
+      "depends_on": ["split_rows"],
+      "for_each_items": "{{steps.split_rows.result.files}}",
+      "for_each_max_parallel": 3,
+      "for_each_body_steps": [
+        {
+          "id": "get_file",
+          "type": "mcp_call",
+          "name": "google_drive_get_file_by_id",
+          "tool_name": "google_drive_get_file_by_id",
+          "tool_args": {
+            "file_id": "{{item.file_id}}",
+            "include_team_drives": true
+          },
+          "server_url": "https://router.agentruntime.io/google-drive/mcp",
+          "instance_id": "REPLACE_GOOGLE_DRIVE_MCP_INSTANCE_ID",
+          "connection_resolution": "principal",
+          "timeout_s": 60
+        },
+        {
+          "id": "map_file_row",
+          "type": "lua_script",
+          "name": "Map enriched file row",
+          "depends_on": ["get_file"],
+          "script": "local f = steps.get_file.result\nreturn {\n  external_id = run.external_id,\n  file_id = f.id,\n  name = f.name,\n  mime_type = f.mime_type,\n  parent_ids = f.parents,\n  trashed = f.trashed,\n  size_bytes = f.size,\n  web_view_link = f.web_view_link,\n  web_content_link = f.web_content_link,\n  created_time = f.created_time,\n  modified_time = f.modified_time,\n  synced_at = input.synced_at,\n  source = \"backfill\",\n}"
+        },
+        {
+          "id": "insert_file",
+          "type": "mcp_call",
+          "name": "tenantdata_insert drive_files",
+          "depends_on": ["map_file_row"],
+          "tool_name": "tenantdata_insert",
+          "tool_args": {
+            "table": "drive_files",
+            "rows": ["{{body.map_file_row.result}}"],
+            "on_duplicate": "upsert"
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        }
+      ]
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Mark backfill complete",
+      "depends_on": ["insert_folders", "foreach_files"],
+      "script": "local row = steps.read_sync_state.result.row or {}\nreturn {\n  external_id = run.external_id,\n  connection_id = row.connection_id or input.connection_id or \"\",\n  root_folder_id = row.root_folder_id or \"root\",\n  backfill_status = \"complete\",\n  backfill_folder_queue = row.backfill_folder_queue,\n  backfill_after = row.backfill_after,\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = row.poll_interval_seconds or 300,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert drive_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "drive_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["synced_at"],
+    "properties": {
+      "synced_at": { "type": "string" },
+      "connection_id": { "type": "string" }
+    }
+  },
+  "example_trigger_payload": {
+    "synced_at": "2026-09-05T00:00:00Z"
+  }
+}

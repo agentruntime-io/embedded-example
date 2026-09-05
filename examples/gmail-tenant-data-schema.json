@@ -1,0 +1,315 @@
+{
+  "tables": [
+    {
+      "name": "gmail_sync_state",
+      "display_name": "Gmail sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "mailbox_email",
+        "last_history_id",
+        "backfill_status",
+        "backfill_page_token",
+        "backfill_query",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        {
+          "name": "external_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "connection_id",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "mailbox_email",
+          "type": "email"
+        },
+        {
+          "name": "last_history_id",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "backfill_status",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "backfill_page_token",
+          "type": "string"
+        },
+        {
+          "name": "backfill_query",
+          "type": "string"
+        },
+        {
+          "name": "last_sync_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "last_error",
+          "type": "string"
+        },
+        {
+          "name": "poll_interval_seconds",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "name": "gmail_threads",
+      "display_name": "Gmail threads",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "thread_id"],
+      "upsert_columns": [
+        "subject",
+        "snippet",
+        "participants",
+        "label_ids",
+        "message_count",
+        "last_message_at",
+        "is_archived",
+        "is_trashed",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        {
+          "name": "external_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "thread_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "subject",
+          "type": "string"
+        },
+        {
+          "name": "snippet",
+          "type": "string"
+        },
+        {
+          "name": "participants",
+          "type": "json"
+        },
+        {
+          "name": "label_ids",
+          "type": "json"
+        },
+        {
+          "name": "message_count",
+          "type": "integer"
+        },
+        {
+          "name": "last_message_at",
+          "type": "datetime"
+        },
+        {
+          "name": "is_archived",
+          "type": "boolean"
+        },
+        {
+          "name": "is_trashed",
+          "type": "boolean"
+        },
+        {
+          "name": "synced_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "source",
+          "type": "short_text",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "gmail_messages",
+      "display_name": "Gmail messages",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "gmail_id"],
+      "upsert_columns": [
+        "thread_id",
+        "subject",
+        "from_email",
+        "to_email",
+        "cc_email",
+        "snippet",
+        "body_text",
+        "body_html",
+        "label_ids",
+        "has_attachments",
+        "received_at",
+        "is_deleted",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        {
+          "name": "external_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "gmail_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "thread_id",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "subject",
+          "type": "string"
+        },
+        {
+          "name": "from_email",
+          "type": "email"
+        },
+        {
+          "name": "to_email",
+          "type": "string"
+        },
+        {
+          "name": "cc_email",
+          "type": "string"
+        },
+        {
+          "name": "snippet",
+          "type": "string"
+        },
+        {
+          "name": "body_text",
+          "type": "string"
+        },
+        {
+          "name": "body_html",
+          "type": "string"
+        },
+        {
+          "name": "label_ids",
+          "type": "json"
+        },
+        {
+          "name": "has_attachments",
+          "type": "boolean"
+        },
+        {
+          "name": "received_at",
+          "type": "datetime"
+        },
+        {
+          "name": "is_deleted",
+          "type": "boolean"
+        },
+        {
+          "name": "synced_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "source",
+          "type": "short_text",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "gmail_attachments",
+      "display_name": "Gmail attachments",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "gmail_id", "attachment_id"],
+      "upsert_columns": [
+        "thread_id",
+        "filename",
+        "mime_type",
+        "size_bytes",
+        "download_status",
+        "storage_ref",
+        "content_base64",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        {
+          "name": "external_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "gmail_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "attachment_id",
+          "type": "short_text",
+          "required": true,
+          "primary_key": true
+        },
+        {
+          "name": "thread_id",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "filename",
+          "type": "string"
+        },
+        {
+          "name": "mime_type",
+          "type": "short_text"
+        },
+        {
+          "name": "size_bytes",
+          "type": "integer"
+        },
+        {
+          "name": "download_status",
+          "type": "short_text",
+          "required": true
+        },
+        {
+          "name": "storage_ref",
+          "type": "string"
+        },
+        {
+          "name": "content_base64",
+          "type": "string"
+        },
+        {
+          "name": "synced_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "source",
+          "type": "short_text",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

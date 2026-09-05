@@ -1,0 +1,16 @@
+{
+  "gmail_mcp_server_url": "http://localhost:8080/gmail/mcp",
+  "gmail_mcp_instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+  "tenantdata_mcp_server_url": "http://localhost:8040/mcp",
+  "tenantdata_mcp_instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+  "workflow_ids": {
+    "bootstrap": "REPLACE_GMAIL_BOOTSTRAP_WORKFLOW_ID",
+    "backfill": "REPLACE_GMAIL_BACKFILL_WORKFLOW_ID",
+    "live_sync": "REPLACE_GMAIL_LIVE_SYNC_WORKFLOW_ID"
+  },
+  "default_backfill_after": "2026/01/01",
+  "default_backfill_query": "in:inbox after:2026/01/01",
+  "poll_interval_seconds": 120,
+  "max_attachment_bytes": 5242880,
+  "internal_sync_enabled": true
+}

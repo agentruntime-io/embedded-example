@@ -1,0 +1,72 @@
+{
+  "workflow_id": "outlook-bootstrap-sync",
+  "name": "Outlook sync bootstrap",
+  "description": "Initialize outlook_sync_state after OAuth connect. Run per principal (external_user_id).",
+  "steps": [
+    {
+      "id": "get_profile",
+      "type": "mcp_call",
+      "name": "microsoft_outlook_graph_request profile",
+      "depends_on": [],
+      "tool_name": "microsoft_outlook_graph_request",
+      "tool_args": {
+        "method": "GET",
+        "path_and_query": "me?$select=mail,displayName,userPrincipalName"
+      },
+      "server_url": "https://router.agentruntime.io/microsoft-outlook/mcp",
+      "instance_id": "REPLACE_OUTLOOK_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "list_folders",
+      "type": "mcp_call",
+      "name": "microsoft_outlook_list_mail_folders",
+      "depends_on": [],
+      "tool_name": "microsoft_outlook_list_mail_folders",
+      "tool_args": { "top": 50 },
+      "server_url": "https://router.agentruntime.io/microsoft-outlook/mcp",
+      "instance_id": "REPLACE_OUTLOOK_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Map sync state row",
+      "depends_on": ["get_profile", "list_folders"],
+      "script": "local body = steps.get_profile.result.body or {}\nlocal inbox_id = \"\"\nfor _, f in ipairs(steps.list_folders.result.folders or {}) do\n  if f.display_name == \"Inbox\" then inbox_id = f.id break end\nend\nlocal after = input.backfill_after or \"2026-01-01\"\nreturn {\n  external_id = run.external_id,\n  connection_id = input.connection_id or \"\",\n  mailbox_email = body.mail or body.userPrincipalName or \"\",\n  display_name = body.displayName or \"\",\n  inbox_folder_id = inbox_id,\n  delta_link = \"\",\n  backfill_status = \"pending\",\n  backfill_page_token = input.backfill_page_token,\n  backfill_after = after,\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = input.poll_interval_seconds or 120,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert outlook_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "outlook_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "backfill_after": { "type": "string", "description": "ISO date lower bound for backfill, e.g. 2026-01-01" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "backfill_after": "2026-01-01",
+    "synced_at": "2026-09-05T00:00:00Z",
+    "poll_interval_seconds": 120
+  }
+}

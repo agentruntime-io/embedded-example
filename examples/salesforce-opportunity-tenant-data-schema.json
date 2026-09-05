@@ -1,0 +1,67 @@
+{
+  "tables": [
+    {
+      "name": "salesforce_sync_state",
+      "display_name": "Salesforce opportunity sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "org_id",
+        "api_version_url",
+        "backfill_status",
+        "backfill_next_records_url",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "connection_id", "type": "short_text", "required": true },
+        { "name": "org_id", "type": "short_text" },
+        { "name": "api_version_url", "type": "string" },
+        { "name": "backfill_status", "type": "short_text", "required": true },
+        { "name": "backfill_next_records_url", "type": "string" },
+        { "name": "last_sync_at", "type": "datetime", "required": true },
+        { "name": "last_error", "type": "string" },
+        { "name": "poll_interval_seconds", "type": "integer" }
+      ]
+    },
+    {
+      "name": "salesforce_opportunities",
+      "display_name": "Salesforce opportunities",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "opportunity_id"],
+      "upsert_columns": [
+        "name",
+        "stage_name",
+        "amount",
+        "close_date",
+        "account_id",
+        "owner_id",
+        "is_closed",
+        "is_won",
+        "last_modified_at",
+        "raw_json",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "opportunity_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "name", "type": "string" },
+        { "name": "stage_name", "type": "short_text" },
+        { "name": "amount", "type": "string" },
+        { "name": "close_date", "type": "short_text" },
+        { "name": "account_id", "type": "short_text" },
+        { "name": "owner_id", "type": "short_text" },
+        { "name": "is_closed", "type": "boolean" },
+        { "name": "is_won", "type": "boolean" },
+        { "name": "last_modified_at", "type": "datetime" },
+        { "name": "raw_json", "type": "json" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    }
+  ]
+}

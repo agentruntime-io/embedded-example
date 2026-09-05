@@ -1,0 +1,58 @@
+{
+  "workflow_id": "gmail-bootstrap-sync",
+  "name": "Gmail sync bootstrap",
+  "description": "Initialize gmail_sync_state after OAuth connect. Run per principal (external_user_id).",
+  "steps": [
+    {
+      "id": "get_profile",
+      "type": "mcp_call",
+      "name": "gmail_get_profile",
+      "depends_on": [],
+      "tool_name": "gmail_get_profile",
+      "tool_args": {},
+      "server_url": "https://router.agentruntime.io/gmail/mcp",
+      "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Map sync state row",
+      "depends_on": ["get_profile"],
+      "script": "local p = steps.get_profile.result\nlocal after = input.backfill_after or \"2026/01/01\"\nreturn {\n  external_id = run.external_id,\n  connection_id = input.connection_id or \"\",\n  mailbox_email = p.email_address,\n  last_history_id = p.history_id,\n  backfill_status = \"pending\",\n  backfill_page_token = input.backfill_page_token,\n  backfill_query = input.backfill_query or (\"in:inbox after:\" .. after),\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = input.poll_interval_seconds or 120,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert gmail_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "gmail_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "backfill_after": { "type": "string", "description": "Gmail after: date, e.g. 2026/01/01" },
+      "backfill_query": { "type": "string" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "backfill_after": "2026/01/01",
+    "synced_at": "2026-09-02T00:00:00Z",
+    "poll_interval_seconds": 120
+  }
+}
