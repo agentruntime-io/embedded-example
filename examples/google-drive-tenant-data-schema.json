@@ -1,0 +1,93 @@
+{
+  "tables": [
+    {
+      "name": "drive_sync_state",
+      "display_name": "Google Drive sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "root_folder_id",
+        "backfill_status",
+        "backfill_folder_queue",
+        "backfill_after",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "connection_id", "type": "short_text", "required": true },
+        { "name": "root_folder_id", "type": "short_text" },
+        { "name": "backfill_status", "type": "short_text", "required": true },
+        { "name": "backfill_folder_queue", "type": "json" },
+        { "name": "backfill_after", "type": "short_text" },
+        { "name": "last_sync_at", "type": "datetime", "required": true },
+        { "name": "last_error", "type": "string" },
+        { "name": "poll_interval_seconds", "type": "integer" }
+      ]
+    },
+    {
+      "name": "drive_folders",
+      "display_name": "Drive folders",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "folder_id"],
+      "upsert_columns": [
+        "name",
+        "parent_ids",
+        "trashed",
+        "web_view_link",
+        "created_time",
+        "modified_time",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "folder_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "name", "type": "string" },
+        { "name": "parent_ids", "type": "json" },
+        { "name": "trashed", "type": "boolean" },
+        { "name": "web_view_link", "type": "string" },
+        { "name": "created_time", "type": "datetime" },
+        { "name": "modified_time", "type": "datetime" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    },
+    {
+      "name": "drive_files",
+      "display_name": "Drive files",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "file_id"],
+      "upsert_columns": [
+        "name",
+        "mime_type",
+        "parent_ids",
+        "trashed",
+        "size_bytes",
+        "web_view_link",
+        "web_content_link",
+        "created_time",
+        "modified_time",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "file_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "name", "type": "string" },
+        { "name": "mime_type", "type": "short_text" },
+        { "name": "parent_ids", "type": "json" },
+        { "name": "trashed", "type": "boolean" },
+        { "name": "size_bytes", "type": "string" },
+        { "name": "web_view_link", "type": "string" },
+        { "name": "web_content_link", "type": "string" },
+        { "name": "created_time", "type": "datetime" },
+        { "name": "modified_time", "type": "datetime" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    }
+  ]
+}

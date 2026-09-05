@@ -1,0 +1,312 @@
+{
+  "workflow_id": "gmail-live-sync",
+  "name": "Gmail live sync",
+  "description": "Poll gmail_list_history: new messages (with attachment bytes), label changes (trash/archive), and permanent deletes. Run per principal on partner cron only.",
+  "steps": [
+    {
+      "id": "read_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_select_one gmail_sync_state",
+      "depends_on": [],
+      "tool_name": "tenantdata_select_one",
+      "tool_args": {
+        "table": "gmail_sync_state",
+        "by_primary_key": {
+          "external_id": "{{run.external_id}}"
+        }
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    },
+    {
+      "id": "list_history",
+      "type": "mcp_call",
+      "name": "gmail_list_history",
+      "depends_on": ["read_sync_state"],
+      "tool_name": "gmail_list_history",
+      "tool_args": {
+        "start_history_id": "{{steps.read_sync_state.result.row.last_history_id}}"
+      },
+      "server_url": "https://router.agentruntime.io/gmail/mcp",
+      "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "parse_history",
+      "type": "lua_script",
+      "name": "Parse history events",
+      "depends_on": ["list_history"],
+      "script": "local function has_label(ids, label)\n  for _, l in ipairs(ids or {}) do\n    if l == label then return true end\n  end\n  return false\nend\nlocal messages_added = {}\nlocal messages_deleted = {}\nlocal trash_updates = {}\nlocal archive_updates = {}\nlocal seen_added = {}\nlocal seen_deleted = {}\nlocal history = steps.list_history.result.history or {}\nfor _, rec in ipairs(history) do\n  if rec.messages_added then\n    for _, ch in ipairs(rec.messages_added) do\n      local m = ch.message\n      if m and m.id and not seen_added[m.id] then\n        seen_added[m.id] = true\n        table.insert(messages_added, { gmail_id = m.id, thread_id = m.thread_id })\n      end\n    end\n  end\n  if rec.messages_deleted then\n    for _, ch in ipairs(rec.messages_deleted) do\n      local m = ch.message\n      if m and m.id and not seen_deleted[m.id] then\n        seen_deleted[m.id] = true\n        table.insert(messages_deleted, { gmail_id = m.id, thread_id = m.thread_id })\n      end\n    end\n  end\n  if rec.labels_added then\n    for _, ch in ipairs(rec.labels_added) do\n      local m = ch.message\n      if m and m.thread_id then\n        if has_label(ch.label_ids, \"TRASH\") then\n          table.insert(trash_updates, { thread_id = m.thread_id, is_trashed = true })\n        end\n        if has_label(ch.label_ids, \"INBOX\") then\n          table.insert(archive_updates, { thread_id = m.thread_id, is_archived = false })\n        end\n      end\n    end\n  end\n  if rec.labels_removed then\n    for _, ch in ipairs(rec.labels_removed) do\n      local m = ch.message\n      if m and m.thread_id then\n        if has_label(ch.label_ids, \"TRASH\") then\n          table.insert(trash_updates, { thread_id = m.thread_id, is_trashed = false })\n        end\n        if has_label(ch.label_ids, \"INBOX\") then\n          table.insert(archive_updates, { thread_id = m.thread_id, is_archived = true })\n        end\n      end\n    end\n  end\nend\nreturn {\n  messages_added = messages_added,\n  messages_deleted = messages_deleted,\n  trash_updates = trash_updates,\n  archive_updates = archive_updates,\n  history_id = steps.list_history.result.history_id,\n}"
+    },
+    {
+      "id": "foreach_deletes",
+      "type": "for_each",
+      "name": "Mark permanently deleted messages",
+      "depends_on": ["parse_history"],
+      "for_each_items": "{{steps.parse_history.result.messages_deleted}}",
+      "for_each_max_parallel": 5,
+      "for_each_body_steps": [
+        {
+          "id": "update_deleted_message",
+          "type": "mcp_call",
+          "name": "tenantdata_update gmail_messages is_deleted",
+          "tool_name": "tenantdata_update",
+          "tool_args": {
+            "table": "gmail_messages",
+            "set": {
+              "is_deleted": true,
+              "synced_at": "{{input.synced_at}}",
+              "source": "live"
+            },
+            "where": {
+              "and": [
+                {"column": "external_id", "op": "eq", "value": "{{run.external_id}}"},
+                {"column": "gmail_id", "op": "eq", "value": "{{item.gmail_id}}"}
+              ]
+            }
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        }
+      ]
+    },
+    {
+      "id": "foreach_trash",
+      "type": "for_each",
+      "name": "Apply trash/untrash label changes",
+      "depends_on": ["parse_history"],
+      "for_each_items": "{{steps.parse_history.result.trash_updates}}",
+      "for_each_max_parallel": 5,
+      "for_each_body_steps": [
+        {
+          "id": "update_trash_thread",
+          "type": "mcp_call",
+          "name": "tenantdata_update gmail_threads is_trashed",
+          "tool_name": "tenantdata_update",
+          "tool_args": {
+            "table": "gmail_threads",
+            "set": {
+              "is_trashed": "{{item.is_trashed}}",
+              "synced_at": "{{input.synced_at}}",
+              "source": "live"
+            },
+            "where": {
+              "and": [
+                {"column": "external_id", "op": "eq", "value": "{{run.external_id}}"},
+                {"column": "thread_id", "op": "eq", "value": "{{item.thread_id}}"}
+              ]
+            }
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        }
+      ]
+    },
+    {
+      "id": "foreach_archive",
+      "type": "for_each",
+      "name": "Apply archive/unarchive label changes",
+      "depends_on": ["parse_history"],
+      "for_each_items": "{{steps.parse_history.result.archive_updates}}",
+      "for_each_max_parallel": 5,
+      "for_each_body_steps": [
+        {
+          "id": "update_archive_thread",
+          "type": "mcp_call",
+          "name": "tenantdata_update gmail_threads is_archived",
+          "tool_name": "tenantdata_update",
+          "tool_args": {
+            "table": "gmail_threads",
+            "set": {
+              "is_archived": "{{item.is_archived}}",
+              "synced_at": "{{input.synced_at}}",
+              "source": "live"
+            },
+            "where": {
+              "and": [
+                {"column": "external_id", "op": "eq", "value": "{{run.external_id}}"},
+                {"column": "thread_id", "op": "eq", "value": "{{item.thread_id}}"}
+              ]
+            }
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        }
+      ]
+    },
+    {
+      "id": "foreach_messages",
+      "type": "for_each",
+      "name": "Fetch and store new messages",
+      "depends_on": ["parse_history"],
+      "for_each_items": "{{steps.parse_history.result.messages_added}}",
+      "for_each_max_parallel": 3,
+      "for_each_body_steps": [
+        {
+          "id": "get_full",
+          "type": "mcp_call",
+          "name": "gmail_get_email_full",
+          "tool_name": "gmail_get_email_full",
+          "tool_args": {
+            "message_id": "{{item.gmail_id}}"
+          },
+          "server_url": "https://router.agentruntime.io/gmail/mcp",
+          "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+          "connection_resolution": "principal",
+          "timeout_s": 90
+        },
+        {
+          "id": "map_rows",
+          "type": "lua_script",
+          "name": "Map thread message attachments",
+          "depends_on": ["get_full"],
+          "script": "local msg = steps.get_full.result\nlocal max = input.max_attachment_bytes or 5242880\nlocal att_rows = {}\nif msg.attachments then\n  for _, a in ipairs(msg.attachments) do\n    table.insert(att_rows, {\n      external_id = run.external_id,\n      gmail_id = msg.id,\n      attachment_id = a.attachment_id,\n      thread_id = msg.thread_id,\n      filename = a.filename,\n      mime_type = a.mime_type,\n      size_bytes = a.size,\n      synced_at = input.synced_at,\n      source = \"live\",\n    })\n  end\nend\nlocal small = {}\nlocal skipped = {}\nfor _, a in ipairs(att_rows) do\n  if a.size_bytes and a.size_bytes > max then\n    a.download_status = \"skipped_size\"\n    table.insert(skipped, a)\n  else\n    table.insert(small, a)\n  end\nend\nlocal labels = msg.label_ids or {}\nlocal is_archived = true\nlocal is_trashed = false\nfor _, lid in ipairs(labels) do\n  if lid == \"INBOX\" then is_archived = false end\n  if lid == \"TRASH\" then is_trashed = true end\nend\nreturn {\n  thread_row = {\n    external_id = run.external_id,\n    thread_id = msg.thread_id,\n    subject = msg.subject,\n    snippet = msg.snippet,\n    participants = { msg.from },\n    label_ids = labels,\n    message_count = 1,\n    last_message_at = msg.date,\n    is_archived = is_archived,\n    is_trashed = is_trashed,\n    synced_at = input.synced_at,\n    source = \"live\",\n  },\n  message_row = {\n    external_id = run.external_id,\n    gmail_id = msg.id,\n    thread_id = msg.thread_id,\n    subject = msg.subject,\n    from_email = msg.from,\n    to_email = msg.to,\n    cc_email = msg.cc,\n    snippet = msg.snippet,\n    body_text = msg.body_text,\n    body_html = msg.body_html,\n    label_ids = labels,\n    has_attachments = msg.has_attachments,\n    received_at = msg.date,\n    is_deleted = false,\n    synced_at = input.synced_at,\n    source = \"live\",\n  },\n  small_attachments = small,\n  skipped_attachments = skipped,\n}"
+        },
+        {
+          "id": "insert_thread",
+          "type": "mcp_call",
+          "name": "tenantdata_insert gmail_threads",
+          "depends_on": ["map_rows"],
+          "tool_name": "tenantdata_insert",
+          "tool_args": {
+            "table": "gmail_threads",
+            "rows": ["{{body.map_rows.result.thread_row}}"],
+            "on_duplicate": "upsert"
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        },
+        {
+          "id": "insert_message",
+          "type": "mcp_call",
+          "name": "tenantdata_insert gmail_messages",
+          "depends_on": ["map_rows"],
+          "tool_name": "tenantdata_insert",
+          "tool_args": {
+            "table": "gmail_messages",
+            "rows": ["{{body.map_rows.result.message_row}}"],
+            "on_duplicate": "upsert"
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        },
+        {
+          "id": "foreach_skipped_attachments",
+          "type": "for_each",
+          "name": "Insert oversized attachment metadata",
+          "depends_on": ["map_rows"],
+          "for_each_items": "{{body.map_rows.result.skipped_attachments}}",
+          "for_each_max_parallel": 3,
+          "for_each_body_steps": [
+            {
+              "id": "insert_skipped_attachment",
+              "type": "mcp_call",
+              "name": "tenantdata_insert gmail_attachments skipped",
+              "tool_name": "tenantdata_insert",
+              "tool_args": {
+                "table": "gmail_attachments",
+                "rows": ["{{item}}"],
+                "on_duplicate": "upsert"
+              },
+              "server_url": "https://db.agentruntime.io/mcp",
+              "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+              "timeout_s": 60
+            }
+          ]
+        },
+        {
+          "id": "foreach_download_attachments",
+          "type": "for_each",
+          "name": "Download and store attachment bytes",
+          "depends_on": ["map_rows"],
+          "for_each_items": "{{body.map_rows.result.small_attachments}}",
+          "for_each_max_parallel": 2,
+          "for_each_body_steps": [
+            {
+              "id": "download_attachment",
+              "type": "mcp_call",
+              "name": "gmail_get_attachment",
+              "tool_name": "gmail_get_attachment",
+              "tool_args": {
+                "message_id": "{{item.gmail_id}}",
+                "attachment_id": "{{item.attachment_id}}",
+                "file_name": "{{item.filename}}"
+              },
+              "server_url": "https://router.agentruntime.io/gmail/mcp",
+              "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+              "connection_resolution": "principal",
+              "timeout_s": 120
+            },
+            {
+              "id": "map_attachment_row",
+              "type": "lua_script",
+              "name": "Map attachment row with bytes",
+              "depends_on": ["download_attachment"],
+              "script": "local att = item\nlocal dl = body.download_attachment.result or {}\nlocal row = {\n  external_id = att.external_id,\n  gmail_id = att.gmail_id,\n  attachment_id = att.attachment_id,\n  thread_id = att.thread_id,\n  filename = att.filename,\n  mime_type = att.mime_type,\n  size_bytes = att.size_bytes,\n  synced_at = att.synced_at,\n  source = att.source,\n}\nif dl.data and dl.data ~= \"\" then\n  row.download_status = \"downloaded\"\n  row.content_base64 = dl.data\n  row.storage_ref = \"inline:\" .. att.gmail_id .. \"/\" .. att.attachment_id\nelse\n  row.download_status = \"failed\"\nend\nreturn row"
+            },
+            {
+              "id": "insert_downloaded_attachment",
+              "type": "mcp_call",
+              "name": "tenantdata_insert gmail_attachments downloaded",
+              "depends_on": ["map_attachment_row"],
+              "tool_name": "tenantdata_insert",
+              "tool_args": {
+                "table": "gmail_attachments",
+                "rows": ["{{body.map_attachment_row.result}}"],
+                "on_duplicate": "upsert"
+              },
+              "server_url": "https://db.agentruntime.io/mcp",
+              "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+              "timeout_s": 60
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "map_checkpoint",
+      "type": "lua_script",
+      "name": "Advance history checkpoint",
+      "depends_on": ["foreach_deletes", "foreach_trash", "foreach_archive", "foreach_messages"],
+      "script": "local row = steps.read_sync_state.result.row or {}\nreturn {\n  external_id = run.external_id,\n  connection_id = row.connection_id or input.connection_id or \"\",\n  mailbox_email = row.mailbox_email,\n  last_history_id = steps.parse_history.result.history_id,\n  backfill_status = row.backfill_status or \"complete\",\n  backfill_page_token = row.backfill_page_token,\n  backfill_query = row.backfill_query,\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = row.poll_interval_seconds or 120,\n}"
+    },
+    {
+      "id": "save_checkpoint",
+      "type": "mcp_call",
+      "name": "tenantdata_insert gmail_sync_state",
+      "depends_on": ["map_checkpoint"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "gmail_sync_state",
+        "rows": ["{{steps.map_checkpoint.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["synced_at"],
+    "properties": {
+      "synced_at": { "type": "string" },
+      "connection_id": { "type": "string" },
+      "max_attachment_bytes": {
+        "type": "integer",
+        "description": "Skip gmail_get_attachment when size_bytes exceeds this (default 5242880)"
+      }
+    }
+  },
+  "example_trigger_payload": {
+    "synced_at": "2026-09-02T00:05:00Z",
+    "max_attachment_bytes": 5242880
+  }
+}

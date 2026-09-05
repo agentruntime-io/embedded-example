@@ -1,0 +1,56 @@
+{
+  "workflow_id": "shopify-order-bootstrap-sync",
+  "name": "Shopify order sync bootstrap",
+  "description": "Fetch shop metadata and seed shopify_sync_state after OAuth connect.",
+  "steps": [
+    {
+      "id": "get_shop",
+      "type": "mcp_call",
+      "name": "shopify_get_shop",
+      "depends_on": [],
+      "tool_name": "shopify_get_shop",
+      "tool_args": {},
+      "server_url": "https://router.agentruntime.io/shopify/mcp",
+      "instance_id": "REPLACE_SHOPIFY_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Map sync state row",
+      "depends_on": ["get_shop"],
+      "script": "local shop = steps.get_shop.result.shop or {}\nreturn {\n  external_id = run.external_id,\n  connection_id = input.connection_id or \"\",\n  shop_domain = shop.domain or shop.myshopify_domain,\n  shop_name = shop.name,\n  backfill_status = \"pending\",\n  backfill_since_id = input.backfill_since_id,\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = input.poll_interval_seconds or 300,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert shopify_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "shopify_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "backfill_since_id": { "type": "string" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "synced_at": "2026-09-05T00:00:00Z",
+    "poll_interval_seconds": 300
+  }
+}

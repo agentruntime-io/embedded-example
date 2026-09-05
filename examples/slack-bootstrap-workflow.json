@@ -1,0 +1,70 @@
+{
+  "workflow_id": "slack-bootstrap-sync",
+  "name": "Slack channel sync bootstrap",
+  "description": "List channels and initialize slack_sync_state after OAuth connect.",
+  "steps": [
+    {
+      "id": "list_channels",
+      "type": "mcp_call",
+      "name": "slack_list_channels",
+      "depends_on": [],
+      "tool_name": "slack_list_channels",
+      "tool_args": { "limit": 200 },
+      "server_url": "https://router.agentruntime.io/slack/mcp",
+      "instance_id": "REPLACE_SLACK_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "map_channels",
+      "type": "lua_script",
+      "name": "Map channel rows and sync state",
+      "depends_on": ["list_channels"],
+      "script": "local channel_rows = {}\nlocal channel_ids = {}\nfor _, ch in ipairs(steps.list_channels.result.channels or {}) do\n  local id = ch.id or \"\"\n  if id ~= \"\" then\n    table.insert(channel_ids, id)\n    table.insert(channel_rows, {\n      external_id = run.external_id,\n      channel_id = id,\n      name = ch.name,\n      is_private = ch.is_private,\n      is_archived = ch.is_archived,\n      member_count = ch.num_members,\n      synced_at = input.synced_at,\n      source = \"bootstrap\",\n    })\n  end\nend\nreturn {\n  channel_rows = channel_rows,\n  sync_state = {\n    external_id = run.external_id,\n    connection_id = input.connection_id or \"\",\n    channel_ids = channel_ids,\n    backfill_status = \"pending\",\n    backfill_channel_index = 0,\n    backfill_cursor = \"\",\n    last_sync_at = input.synced_at,\n    poll_interval_seconds = input.poll_interval_seconds or 300,\n  },\n}"
+    },
+    {
+      "id": "insert_channels",
+      "type": "mcp_call",
+      "name": "tenantdata_insert slack_channels",
+      "depends_on": ["map_channels"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "slack_channels",
+        "rows": "{{steps.map_channels.result.channel_rows}}",
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert slack_sync_state",
+      "depends_on": ["map_channels"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "slack_sync_state",
+        "rows": ["{{steps.map_channels.result.sync_state}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "synced_at": "2026-09-05T00:00:00Z",
+    "poll_interval_seconds": 300
+  }
+}

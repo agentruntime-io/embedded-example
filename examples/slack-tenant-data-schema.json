@@ -1,0 +1,84 @@
+{
+  "tables": [
+    {
+      "name": "slack_sync_state",
+      "display_name": "Slack sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "channel_ids",
+        "backfill_status",
+        "backfill_channel_index",
+        "backfill_cursor",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "connection_id", "type": "short_text", "required": true },
+        { "name": "channel_ids", "type": "json" },
+        { "name": "backfill_status", "type": "short_text", "required": true },
+        { "name": "backfill_channel_index", "type": "integer" },
+        { "name": "backfill_cursor", "type": "string" },
+        { "name": "last_sync_at", "type": "datetime", "required": true },
+        { "name": "last_error", "type": "string" },
+        { "name": "poll_interval_seconds", "type": "integer" }
+      ]
+    },
+    {
+      "name": "slack_channels",
+      "display_name": "Slack channels",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "channel_id"],
+      "upsert_columns": [
+        "name",
+        "is_private",
+        "is_archived",
+        "member_count",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "channel_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "name", "type": "string" },
+        { "name": "is_private", "type": "boolean" },
+        { "name": "is_archived", "type": "boolean" },
+        { "name": "member_count", "type": "integer" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    },
+    {
+      "name": "slack_messages",
+      "display_name": "Slack messages",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "channel_id", "message_ts"],
+      "upsert_columns": [
+        "thread_ts",
+        "user_id",
+        "text",
+        "reply_count",
+        "has_replies",
+        "posted_at",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "channel_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "message_ts", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "thread_ts", "type": "short_text" },
+        { "name": "user_id", "type": "short_text" },
+        { "name": "text", "type": "string" },
+        { "name": "reply_count", "type": "integer" },
+        { "name": "has_replies", "type": "boolean" },
+        { "name": "posted_at", "type": "datetime" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "workflow_id": "salesforce-opportunity-bootstrap-sync",
+  "name": "Salesforce opportunity sync bootstrap",
+  "description": "Health ping + initial opportunity sample query; seed salesforce_sync_state after OAuth connect.",
+  "steps": [
+    {
+      "id": "health_ping",
+      "type": "mcp_call",
+      "name": "salesforce_health_ping",
+      "depends_on": [],
+      "tool_name": "salesforce_health_ping",
+      "tool_args": {},
+      "server_url": "https://router.agentruntime.io/salesforce/mcp",
+      "instance_id": "REPLACE_SALESFORCE_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "sample_query",
+      "type": "mcp_call",
+      "name": "salesforce_soql_query opportunities sample",
+      "depends_on": ["health_ping"],
+      "tool_name": "salesforce_soql_query",
+      "tool_args": {
+        "query": "SELECT Id, Name, StageName, Amount, CloseDate, AccountId, OwnerId, IsClosed, IsWon, LastModifiedDate FROM Opportunity ORDER BY LastModifiedDate DESC LIMIT 1"
+      },
+      "server_url": "https://router.agentruntime.io/salesforce/mcp",
+      "instance_id": "REPLACE_SALESFORCE_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 60
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Map sync state row",
+      "depends_on": ["sample_query"],
+      "script": "local ping = steps.health_ping.result\nreturn {\n  external_id = run.external_id,\n  connection_id = input.connection_id or \"\",\n  org_id = \"\",\n  api_version_url = ping.api_version_url,\n  backfill_status = \"pending\",\n  backfill_next_records_url = \"\",\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = input.poll_interval_seconds or 300,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert salesforce_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "salesforce_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "synced_at": "2026-09-05T00:00:00Z",
+    "poll_interval_seconds": 300
+  }
+}

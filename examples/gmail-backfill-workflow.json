@@ -1,176 +1,239 @@
 {
-  "workflow_id": "40ae42d4-b475-423a-9cf4-eb697578c428",
-  "nodes": [
-    {
-      "data": {
-        "label": "MCP: gmail_search_emails",
-        "mcpStepPayload": {
-          "connection_resolution": "principal",
-          "description": "Invoke gmail_search_emails on Gmail",
-          "instance_id": "d4eeceac-0e71-4539-9416-5d18c4cfcd8e",
-          "name": "MCP: gmail_search_emails",
-          "server_url": "https://router.agentruntime.io/gmail/mcp",
-          "timeout_s": 60,
-          "tool_args": {
-            "max_results": 100,
-            "query": "in:all after:{{input.backfill_after}} before:{{input.backfill_before}}"
-          },
-          "tool_name": "gmail_search_emails",
-          "type": "mcp_call"
-        },
-        "mcpToolSchema": {
-          "inputSchema": {
-            "additionalProperties": false,
-            "properties": {
-              "max_results": {
-                "description": "Maximum messages to return (default 10, max 100)",
-                "type": "integer"
-              },
-              "query": {
-                "description": "Gmail search query (e.g. from:user@example.com is:unread subject:hello)",
-                "type": "string"
-              }
-            },
-            "required": ["query"],
-            "type": "object"
-          },
-          "outputSchema": {
-            "additionalProperties": false,
-            "properties": {
-              "count": {
-                "description": "Number of messages returned",
-                "type": "integer"
-              },
-              "messages": {
-                "description": "Matching message summaries",
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "date": { "description": "Date header value", "type": "string" },
-                    "from": { "description": "From header value", "type": "string" },
-                    "id": { "description": "Gmail message ID", "type": "string" },
-                    "snippet": { "description": "Short message preview text", "type": "string" },
-                    "subject": { "description": "Subject header value", "type": "string" },
-                    "thread_id": { "description": "Gmail thread ID", "type": "string" }
-                  },
-                  "required": ["id", "thread_id", "snippet", "from", "subject", "date"],
-                  "type": "object"
-                },
-                "type": ["null", "array"]
-              }
-            },
-            "required": ["count", "messages"],
-            "type": "object"
-          }
-        },
-        "node_uuid": "af2ccc51-8117-4f62-885b-57bcb27cc710",
-        "status": "success",
-        "type": "mcp_call"
-      },
-      "id": "af2ccc51-8117-4f62-885b-57bcb27cc710",
-      "type": "mcp_call"
-    },
-    {
-      "data": {
-        "baseAgent": {
-          "agent_id": "foreach_parallel",
-          "description": "Run a nested step for each element in a list, with bounded parallelism (max_parallel). Use {{foreach.item}} and {{foreach.index}} in the body step templates, or item/index in Lua.",
-          "id": "foreach_parallel",
-          "name": "For each (parallel)",
-          "node_type": "logic",
-          "provider": "builtin"
-        },
-        "builtinStepPayload": {
-          "for_each_body_steps": [
-            {
-              "id": "lua_transform",
-              "name": "Lua transform",
-              "script": "local months = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}\n\nlocal function iso_from_gmail_date(s)\n  if type(s) ~= \"string\" or s == \"\" then return nil end\n  local cleaned = s:gsub(\"%s*%([^)]+%)%s*$\", \"\")\n  cleaned = cleaned:gsub(\"^[%a]+, \", \"\")\n  local day, mon, year, hh, mm, ss, tzsign, tzh, tzm =\n    cleaned:match(\"(%d%d?) (%a%a%a) (%d%d%d%d) (%d%d):(%d%d):(%d%d) ([+-])(%d%d)(%d%d)\")\n  if not day then return nil end\n  local m = months[mon]\n  if not m then return nil end\n  return string.format(\n    \"%04d-%02d-%02dT%s:%s:%s%s%s:%s\",\n    tonumber(year), m, tonumber(day), hh, mm, ss, tzsign, tzh, tzm\n  )\nend\n\nreturn {\n  external_id = run.external_id,\n  from_email = item.from,\n  gmail_id = item.id,\n  received_at = iso_from_gmail_date(item.date),\n  snippet = item.snippet,\n  source = \"backfill\",\n  subject = item.subject,\n  synced_at = input.synced_at,\n  thread_id = item.thread_id,\n}",
-              "type": "lua_script"
-            },
-            {
-              "id": "tenantdata_insert",
-              "instance_id": "ae4eafa7-4c9e-4478-b1fd-3d10073571b4",
-              "name": "MCP: tenantdata_insert",
-              "server_url": "https://db.agentruntime.io/mcp",
-              "timeout_s": 60,
-              "tool_args": {
-                "rows": ["{{body.lua_transform.result}}"],
-                "table": "emails"
-              },
-              "tool_name": "tenantdata_insert",
-              "type": "mcp_call",
-              "depends_on": ["lua_transform"]
-            }
-          ],
-          "for_each_items": "{{steps.af2ccc51-8117-4f62-885b-57bcb27cc710.result.messages}}",
-          "for_each_max_parallel": 5,
-          "id": "foreach_parallel",
-          "name": "For each (parallel)",
-          "type": "for_each"
-        },
-        "label": "For each (parallel)",
-        "node_uuid": "4cc4c985-7523-4717-ba4b-e7766994bc83",
-        "type": "logic"
-      },
-      "id": "4cc4c985-7523-4717-ba4b-e7766994bc83",
-      "type": "logic"
-    }
-  ],
-  "edges": [
-    {
-      "id": "e-af2ccc51-8117-4f62-885b-57bcb27cc710-4cc4c985-7523-4717-ba4b-e7766994bc83",
-      "source": "af2ccc51-8117-4f62-885b-57bcb27cc710",
-      "target": "4cc4c985-7523-4717-ba4b-e7766994bc83"
-    }
-  ],
+  "workflow_id": "gmail-backfill-sync",
+  "name": "Gmail backfill sync",
+  "description": "Thread-based Gmail backfill into Tenant Data. Requires backfill_after start date. Re-run while backfill_status=running.",
   "steps": [
     {
-      "id": "af2ccc51-8117-4f62-885b-57bcb27cc710",
+      "id": "read_sync_state",
       "type": "mcp_call",
-      "name": "MCP: gmail_search_emails",
-      "description": "Invoke gmail_search_emails on Gmail",
-      "tool_name": "gmail_search_emails",
+      "name": "tenantdata_select_one gmail_sync_state",
+      "depends_on": [],
+      "tool_name": "tenantdata_select_one",
       "tool_args": {
-        "max_results": 100,
-        "query": "in:all after:{{input.backfill_after}} before:{{input.backfill_before}}"
+        "table": "gmail_sync_state",
+        "by_primary_key": {
+          "external_id": "{{run.external_id}}"
+        }
       },
-      "server_url": "https://router.agentruntime.io/gmail/mcp",
-      "timeout_s": 60,
-      "instance_id": "d4eeceac-0e71-4539-9416-5d18c4cfcd8e",
-      "connection_resolution": "principal",
-      "depends_on": []
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
     },
     {
-      "id": "4cc4c985-7523-4717-ba4b-e7766994bc83",
+      "id": "build_query",
+      "type": "lua_script",
+      "name": "Build backfill query and page token",
+      "depends_on": ["read_sync_state"],
+      "script": "local row = {}\nif steps.read_sync_state.result and steps.read_sync_state.result.row then\n  row = steps.read_sync_state.result.row\nend\nlocal after = input.backfill_after or \"2026/01/01\"\nlocal page = input.backfill_page_token or row.backfill_page_token\nlocal query = input.backfill_query or row.backfill_query or (\"in:inbox after:\" .. after)\nreturn {\n  query = query,\n  page_token = page,\n  connection_id = row.connection_id or input.connection_id or \"\",\n  mailbox_email = row.mailbox_email,\n  last_history_id = row.last_history_id or input.last_history_id or \"\",\n  poll_interval_seconds = row.poll_interval_seconds or input.poll_interval_seconds or 120,\n}"
+    },
+    {
+      "id": "list_threads",
+      "type": "mcp_call",
+      "name": "gmail_list_threads",
+      "depends_on": ["build_query"],
+      "tool_name": "gmail_list_threads",
+      "tool_args": {
+        "query": "{{steps.build_query.result.query}}",
+        "max_results": 50,
+        "page_token": "{{steps.build_query.result.page_token}}",
+        "verbose": true
+      },
+      "server_url": "https://router.agentruntime.io/gmail/mcp",
+      "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+      "connection_resolution": "principal",
+      "timeout_s": 120
+    },
+    {
+      "id": "flatten_messages",
+      "type": "lua_script",
+      "name": "Flatten thread messages",
+      "depends_on": ["list_threads"],
+      "script": "local out = {}\nlocal threads = steps.list_threads.result.threads or {}\nfor _, thread in ipairs(threads) do\n  for _, msg in ipairs(thread.messages or {}) do\n    table.insert(out, {\n      gmail_id = msg.id,\n      thread_id = thread.id,\n      thread_snippet = thread.snippet,\n      from_email = msg.from,\n      subject = msg.subject,\n      date = msg.date,\n    })\n  end\nend\nreturn {\n  messages = out,\n  next_page_token = steps.list_threads.result.next_page_token,\n}"
+    },
+    {
+      "id": "foreach_messages",
       "type": "for_each",
-      "name": "For each (parallel)",
-      "description": "Run a nested step for each element in a list, with bounded parallelism (max_parallel). Use {{foreach.item}} and {{foreach.index}} in the body step templates, or item/index in Lua.",
-      "for_each_items": "{{steps.af2ccc51-8117-4f62-885b-57bcb27cc710.result.messages}}",
-      "for_each_max_parallel": 5,
+      "name": "Fetch full messages",
+      "depends_on": ["flatten_messages"],
+      "for_each_items": "{{steps.flatten_messages.result.messages}}",
+      "for_each_max_parallel": 3,
       "for_each_body_steps": [
         {
-          "id": "lua_transform",
-          "type": "lua_script",
-          "name": "Lua transform",
-          "script": "local months = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}\n\nlocal function iso_from_gmail_date(s)\n  if type(s) ~= \"string\" or s == \"\" then return nil end\n  local cleaned = s:gsub(\"%s*%([^)]+%)%s*$\", \"\")\n  cleaned = cleaned:gsub(\"^[%a]+, \", \"\")\n  local day, mon, year, hh, mm, ss, tzsign, tzh, tzm =\n    cleaned:match(\"(%d%d?) (%a%a%a) (%d%d%d%d) (%d%d):(%d%d):(%d%d) ([+-])(%d%d)(%d%d)\")\n  if not day then return nil end\n  local m = months[mon]\n  if not m then return nil end\n  return string.format(\n    \"%04d-%02d-%02dT%s:%s:%s%s%s:%s\",\n    tonumber(year), m, tonumber(day), hh, mm, ss, tzsign, tzh, tzm\n  )\nend\n\nreturn {\n  external_id = run.external_id,\n  from_email = item.from,\n  gmail_id = item.id,\n  received_at = iso_from_gmail_date(item.date),\n  snippet = item.snippet,\n  source = \"backfill\",\n  subject = item.subject,\n  synced_at = input.synced_at,\n  thread_id = item.thread_id,\n}"
+          "id": "get_full",
+          "type": "mcp_call",
+          "name": "gmail_get_email_full",
+          "tool_name": "gmail_get_email_full",
+          "tool_args": {
+            "message_id": "{{item.gmail_id}}"
+          },
+          "server_url": "https://router.agentruntime.io/gmail/mcp",
+          "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+          "connection_resolution": "principal",
+          "timeout_s": 90
         },
         {
-          "id": "tenantdata_insert",
+          "id": "map_rows",
+          "type": "lua_script",
+          "name": "Map thread message attachments",
+          "depends_on": ["get_full"],
+          "script": "local msg = steps.get_full.result\nlocal max = input.max_attachment_bytes or 5242880\nlocal att_rows = {}\nif msg.attachments then\n  for _, a in ipairs(msg.attachments) do\n    table.insert(att_rows, {\n      external_id = run.external_id,\n      gmail_id = msg.id,\n      attachment_id = a.attachment_id,\n      thread_id = msg.thread_id,\n      filename = a.filename,\n      mime_type = a.mime_type,\n      size_bytes = a.size,\n      synced_at = input.synced_at,\n      source = \"backfill\",\n    })\n  end\nend\nlocal small = {}\nlocal skipped = {}\nfor _, a in ipairs(att_rows) do\n  if a.size_bytes and a.size_bytes > max then\n    a.download_status = \"skipped_size\"\n    table.insert(skipped, a)\n  else\n    table.insert(small, a)\n  end\nend\nlocal labels = msg.label_ids or {}\nlocal is_archived = true\nlocal is_trashed = false\nfor _, lid in ipairs(labels) do\n  if lid == \"INBOX\" then is_archived = false end\n  if lid == \"TRASH\" then is_trashed = true end\nend\nreturn {\n  thread_row = {\n    external_id = run.external_id,\n    thread_id = msg.thread_id,\n    subject = msg.subject,\n    snippet = msg.snippet,\n    participants = { msg.from },\n    label_ids = labels,\n    message_count = 1,\n    last_message_at = msg.date,\n    is_archived = is_archived,\n    is_trashed = is_trashed,\n    synced_at = input.synced_at,\n    source = \"backfill\",\n  },\n  message_row = {\n    external_id = run.external_id,\n    gmail_id = msg.id,\n    thread_id = msg.thread_id,\n    subject = msg.subject,\n    from_email = msg.from,\n    to_email = msg.to,\n    cc_email = msg.cc,\n    snippet = msg.snippet,\n    body_text = msg.body_text,\n    body_html = msg.body_html,\n    label_ids = labels,\n    has_attachments = msg.has_attachments,\n    received_at = msg.date,\n    is_deleted = false,\n    synced_at = input.synced_at,\n    source = \"backfill\",\n  },\n  small_attachments = small,\n  skipped_attachments = skipped,\n}"
+        },
+        {
+          "id": "insert_thread",
           "type": "mcp_call",
-          "name": "MCP: tenantdata_insert",
-          "depends_on": ["lua_transform"],
+          "name": "tenantdata_insert gmail_threads",
+          "depends_on": ["map_rows"],
           "tool_name": "tenantdata_insert",
-          "server_url": "https://db.agentruntime.io/mcp",
-          "instance_id": "ae4eafa7-4c9e-4478-b1fd-3d10073571b4",
           "tool_args": {
-            "rows": ["{{body.lua_transform.result}}"],
-            "table": "emails"
+            "table": "gmail_threads",
+            "rows": ["{{body.map_rows.result.thread_row}}"],
+            "on_duplicate": "upsert"
           },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
           "timeout_s": 60
+        },
+        {
+          "id": "insert_message",
+          "type": "mcp_call",
+          "name": "tenantdata_insert gmail_messages",
+          "depends_on": ["map_rows"],
+          "tool_name": "tenantdata_insert",
+          "tool_args": {
+            "table": "gmail_messages",
+            "rows": ["{{body.map_rows.result.message_row}}"],
+            "on_duplicate": "upsert"
+          },
+          "server_url": "https://db.agentruntime.io/mcp",
+          "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+          "timeout_s": 60
+        },
+        {
+          "id": "foreach_skipped_attachments",
+          "type": "for_each",
+          "name": "Insert oversized attachment metadata",
+          "depends_on": ["map_rows"],
+          "for_each_items": "{{body.map_rows.result.skipped_attachments}}",
+          "for_each_max_parallel": 3,
+          "for_each_body_steps": [
+            {
+              "id": "insert_skipped_attachment",
+              "type": "mcp_call",
+              "name": "tenantdata_insert gmail_attachments skipped",
+              "tool_name": "tenantdata_insert",
+              "tool_args": {
+                "table": "gmail_attachments",
+                "rows": ["{{item}}"],
+                "on_duplicate": "upsert"
+              },
+              "server_url": "https://db.agentruntime.io/mcp",
+              "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+              "timeout_s": 60
+            }
+          ]
+        },
+        {
+          "id": "foreach_download_attachments",
+          "type": "for_each",
+          "name": "Download and store attachment bytes",
+          "depends_on": ["map_rows"],
+          "for_each_items": "{{body.map_rows.result.small_attachments}}",
+          "for_each_max_parallel": 2,
+          "for_each_body_steps": [
+            {
+              "id": "download_attachment",
+              "type": "mcp_call",
+              "name": "gmail_get_attachment",
+              "tool_name": "gmail_get_attachment",
+              "tool_args": {
+                "message_id": "{{item.gmail_id}}",
+                "attachment_id": "{{item.attachment_id}}",
+                "file_name": "{{item.filename}}"
+              },
+              "server_url": "https://router.agentruntime.io/gmail/mcp",
+              "instance_id": "REPLACE_GMAIL_MCP_INSTANCE_ID",
+              "connection_resolution": "principal",
+              "timeout_s": 120
+            },
+            {
+              "id": "map_attachment_row",
+              "type": "lua_script",
+              "name": "Map attachment row with bytes",
+              "depends_on": ["download_attachment"],
+              "script": "local att = item\nlocal dl = body.download_attachment.result or {}\nlocal row = {\n  external_id = att.external_id,\n  gmail_id = att.gmail_id,\n  attachment_id = att.attachment_id,\n  thread_id = att.thread_id,\n  filename = att.filename,\n  mime_type = att.mime_type,\n  size_bytes = att.size_bytes,\n  synced_at = att.synced_at,\n  source = att.source,\n}\nif dl.data and dl.data ~= \"\" then\n  row.download_status = \"downloaded\"\n  row.content_base64 = dl.data\n  row.storage_ref = \"inline:\" .. att.gmail_id .. \"/\" .. att.attachment_id\nelse\n  row.download_status = \"failed\"\nend\nreturn row"
+            },
+            {
+              "id": "insert_downloaded_attachment",
+              "type": "mcp_call",
+              "name": "tenantdata_insert gmail_attachments downloaded",
+              "depends_on": ["map_attachment_row"],
+              "tool_name": "tenantdata_insert",
+              "tool_args": {
+                "table": "gmail_attachments",
+                "rows": ["{{body.map_attachment_row.result}}"],
+                "on_duplicate": "upsert"
+              },
+              "server_url": "https://db.agentruntime.io/mcp",
+              "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+              "timeout_s": 60
+            }
+          ]
         }
-      ],
-      "depends_on": ["af2ccc51-8117-4f62-885b-57bcb27cc710"]
+      ]
+    },
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Update backfill checkpoint",
+      "depends_on": ["foreach_messages"],
+      "script": "local token = steps.flatten_messages.result.next_page_token\nlocal status = \"complete\"\nlocal page = nil\nif type(token) == \"string\" and token ~= \"\" then\n  status = \"running\"\n  page = token\nend\nlocal after = input.backfill_after or \"2026/01/01\"\nlocal bq = steps.build_query.result or {}\nreturn {\n  external_id = run.external_id,\n  connection_id = bq.connection_id or input.connection_id or \"\",\n  mailbox_email = bq.mailbox_email,\n  last_history_id = bq.last_history_id or \"\",\n  backfill_status = status,\n  backfill_page_token = page,\n  backfill_query = bq.query or (\"in:inbox after:\" .. after),\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = bq.poll_interval_seconds or 120,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert gmail_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "gmail_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
     }
-  ]
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["backfill_after", "synced_at"],
+    "properties": {
+      "backfill_after": {
+        "type": "string",
+        "description": "Gmail after: date — required lower bound, e.g. 2026/01/01"
+      },
+      "backfill_query": {
+        "type": "string",
+        "description": "Optional full Gmail query; default in:inbox after:{backfill_after}"
+      },
+      "backfill_page_token": {
+        "type": "string",
+        "description": "Resume pagination from prior run (from gmail_sync_state)"
+      },
+      "synced_at": { "type": "string" },
+      "connection_id": { "type": "string" },
+      "last_history_id": { "type": "string" },
+      "poll_interval_seconds": { "type": "integer" },
+      "max_attachment_bytes": {
+        "type": "integer",
+        "description": "Skip gmail_get_attachment when size_bytes exceeds this (default 5242880)"
+      }
+    }
+  },
+  "example_trigger_payload": {
+    "backfill_after": "2026/01/01",
+    "backfill_query": "in:inbox after:2026/01/01",
+    "synced_at": "2026-09-02T00:00:00Z",
+    "max_attachment_bytes": 5242880
+  }
 }

@@ -1,0 +1,105 @@
+{
+  "tables": [
+    {
+      "name": "outlook_sync_state",
+      "display_name": "Outlook sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "mailbox_email",
+        "display_name",
+        "inbox_folder_id",
+        "delta_link",
+        "backfill_status",
+        "backfill_page_token",
+        "backfill_after",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "connection_id", "type": "short_text", "required": true },
+        { "name": "mailbox_email", "type": "email" },
+        { "name": "display_name", "type": "string" },
+        { "name": "inbox_folder_id", "type": "short_text" },
+        { "name": "delta_link", "type": "string" },
+        { "name": "backfill_status", "type": "short_text", "required": true },
+        { "name": "backfill_page_token", "type": "string" },
+        { "name": "backfill_after", "type": "short_text" },
+        { "name": "last_sync_at", "type": "datetime", "required": true },
+        { "name": "last_error", "type": "string" },
+        { "name": "poll_interval_seconds", "type": "integer" }
+      ]
+    },
+    {
+      "name": "outlook_conversations",
+      "display_name": "Outlook conversations",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "conversation_id"],
+      "upsert_columns": [
+        "subject",
+        "preview",
+        "participants",
+        "message_count",
+        "last_message_at",
+        "is_read",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "conversation_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "subject", "type": "string" },
+        { "name": "preview", "type": "string" },
+        { "name": "participants", "type": "json" },
+        { "name": "message_count", "type": "integer" },
+        { "name": "last_message_at", "type": "datetime" },
+        { "name": "is_read", "type": "boolean" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    },
+    {
+      "name": "outlook_messages",
+      "display_name": "Outlook messages",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "message_id"],
+      "upsert_columns": [
+        "conversation_id",
+        "subject",
+        "from_email",
+        "to_email",
+        "cc_email",
+        "body_preview",
+        "has_attachments",
+        "is_read",
+        "is_draft",
+        "parent_folder_id",
+        "received_at",
+        "is_deleted",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "message_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "conversation_id", "type": "short_text", "required": true },
+        { "name": "subject", "type": "string" },
+        { "name": "from_email", "type": "email" },
+        { "name": "to_email", "type": "string" },
+        { "name": "cc_email", "type": "string" },
+        { "name": "body_preview", "type": "string" },
+        { "name": "has_attachments", "type": "boolean" },
+        { "name": "is_read", "type": "boolean" },
+        { "name": "is_draft", "type": "boolean" },
+        { "name": "parent_folder_id", "type": "short_text" },
+        { "name": "received_at", "type": "datetime" },
+        { "name": "is_deleted", "type": "boolean" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "tables": [
+    {
+      "name": "shopify_sync_state",
+      "display_name": "Shopify order sync state",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id"],
+      "upsert_columns": [
+        "connection_id",
+        "shop_domain",
+        "shop_name",
+        "backfill_status",
+        "backfill_since_id",
+        "last_sync_at",
+        "last_error",
+        "poll_interval_seconds"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "connection_id", "type": "short_text", "required": true },
+        { "name": "shop_domain", "type": "short_text" },
+        { "name": "shop_name", "type": "string" },
+        { "name": "backfill_status", "type": "short_text", "required": true },
+        { "name": "backfill_since_id", "type": "string" },
+        { "name": "last_sync_at", "type": "datetime", "required": true },
+        { "name": "last_error", "type": "string" },
+        { "name": "poll_interval_seconds", "type": "integer" }
+      ]
+    },
+    {
+      "name": "shopify_orders",
+      "display_name": "Shopify orders",
+      "on_duplicate": "upsert",
+      "conflict_columns": ["external_id", "order_id"],
+      "upsert_columns": [
+        "order_number",
+        "financial_status",
+        "fulfillment_status",
+        "total_price",
+        "currency",
+        "customer_email",
+        "created_at",
+        "updated_at",
+        "raw_json",
+        "synced_at",
+        "source"
+      ],
+      "columns": [
+        { "name": "external_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "order_id", "type": "short_text", "required": true, "primary_key": true },
+        { "name": "order_number", "type": "string" },
+        { "name": "financial_status", "type": "short_text" },
+        { "name": "fulfillment_status", "type": "short_text" },
+        { "name": "total_price", "type": "string" },
+        { "name": "currency", "type": "short_text" },
+        { "name": "customer_email", "type": "email" },
+        { "name": "created_at", "type": "datetime" },
+        { "name": "updated_at", "type": "datetime" },
+        { "name": "raw_json", "type": "json" },
+        { "name": "synced_at", "type": "datetime", "required": true },
+        { "name": "source", "type": "short_text", "required": true }
+      ]
+    }
+  ]
+}

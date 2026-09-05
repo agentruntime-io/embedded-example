@@ -1,0 +1,47 @@
+{
+  "workflow_id": "google-drive-bootstrap-sync",
+  "name": "Google Drive sync bootstrap",
+  "description": "Initialize drive_sync_state after OAuth connect. Run per principal.",
+  "steps": [
+    {
+      "id": "map_sync_state",
+      "type": "lua_script",
+      "name": "Map sync state row",
+      "depends_on": [],
+      "script": "local after = input.backfill_after or \"2026-01-01T00:00:00Z\"\nreturn {\n  external_id = run.external_id,\n  connection_id = input.connection_id or \"\",\n  root_folder_id = input.root_folder_id or \"root\",\n  backfill_status = \"pending\",\n  backfill_folder_queue = { input.root_folder_id or \"root\" },\n  backfill_after = after,\n  last_sync_at = input.synced_at,\n  poll_interval_seconds = input.poll_interval_seconds or 300,\n}"
+    },
+    {
+      "id": "save_sync_state",
+      "type": "mcp_call",
+      "name": "tenantdata_insert drive_sync_state",
+      "depends_on": ["map_sync_state"],
+      "tool_name": "tenantdata_insert",
+      "tool_args": {
+        "table": "drive_sync_state",
+        "rows": ["{{steps.map_sync_state.result}}"],
+        "on_duplicate": "upsert"
+      },
+      "server_url": "https://db.agentruntime.io/mcp",
+      "instance_id": "REPLACE_TENANTDATA_MCP_INSTANCE_ID",
+      "timeout_s": 60
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["connection_id", "synced_at"],
+    "properties": {
+      "connection_id": { "type": "string" },
+      "synced_at": { "type": "string" },
+      "root_folder_id": { "type": "string", "description": "Drive folder to crawl; default root" },
+      "backfill_after": { "type": "string", "description": "RFC3339 modifiedTime lower bound" },
+      "poll_interval_seconds": { "type": "integer" }
+    }
+  },
+  "example_trigger_payload": {
+    "connection_id": "conn_from_webhook",
+    "root_folder_id": "root",
+    "backfill_after": "2026-01-01T00:00:00Z",
+    "synced_at": "2026-09-05T00:00:00Z",
+    "poll_interval_seconds": 300
+  }
+}
